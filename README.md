@@ -13,10 +13,12 @@ CodeStory 是一个面向非技术作者的作品可视化解读器。它从“�
 
 - [项目运行说明](docs/项目运行说明.md)
 - [作品描述](docs/作品描述.md)
+- [项目结论总结](docs/项目结论总结.md)
 
-## 在线体验
+## 部署说明
 
-https://qwe38qwe.github.io/codestory/
+项目可构建为纯静态站点。私有仓库能否使用 GitHub Pages 取决于 GitHub
+账号与套餐权限，也可以将 `dist/` 部署到其他静态托管服务。
 
 ## 运行
 
@@ -32,7 +34,7 @@ npm run build
 npm run preview
 ```
 
-发布到 GitHub Pages：
+账号支持私有仓库 GitHub Pages 时，可执行：
 
 ```bash
 npm run deploy
