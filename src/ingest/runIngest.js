@@ -1,8 +1,10 @@
 import { buildDigest, estimateTokens } from "./buildDigest";
+import { buildStructuralIndex } from "./buildStructuralIndex";
 import { completeJson } from "./callLlm";
 import { fetchGithubRepo } from "./fetchGithubRepo";
 import { parseGithubUrl } from "./parseGithubUrl";
 import { featurePrompt, storyPrompt } from "./prompt";
+import { toRuntimeProject } from "./projectAdapter";
 import { readLocalFolder } from "./readLocalFolder";
 import { validateGeneratedStory } from "./validateGenerated";
 
@@ -18,44 +20,40 @@ export async function scanRepository({ sourceType, githubUrl, branch, subdir, fi
       languages,
     }, onProgress);
 
-  onProgress?.("2/4 过滤并裁剪");
+  onProgress?.("2/4 建立结构索引");
   const digest = buildDigest(repo);
+  const structuralIndex = buildStructuralIndex(repo);
   return {
     repo,
     digest,
-    tokenEstimate: estimateTokens(digest.chars),
+    structuralIndex,
+    tokenEstimate: estimateTokens(digest.chars + structuralIndex.text.length),
   };
 }
 
-export async function generateStories({ repo, digest, settings, maxFeatures = 5, maxSteps = 6 }, onProgress) {
-  onProgress?.("3/4 调用模型：识别功能");
+export async function discoverFeatures({ repo, digest, structuralIndex, settings, maxFeatures = 6 }, onProgress) {
+  onProgress?.("3/4 AI 识别核心功能");
   const featureDraft = await completeJson({
     settings,
-    messages: featurePrompt({ repo, digest, maxFeatures }),
+    messages: featurePrompt({ repo, digest, structuralIndex, maxFeatures }),
   });
   const features = (featureDraft.features || []).slice(0, maxFeatures);
-  if (!features.length) throw new Error("模型没有给出可播放的功能，请换模型或缩小目录后重试。");
+  if (!features.length) throw new Error("模型没有识别出可讲解的核心功能。可以换模型或缩小分析目录。");
+  return { featureDraft, features };
+}
 
-  onProgress?.("3/4 调用模型：生成步骤");
+export async function generateStories({ repo, digest, structuralIndex, settings, features, featureDraft, maxSteps = 7 }, onProgress) {
+  onProgress?.("4/4 生成实现 Story");
   const storyDraft = await completeJson({
     settings,
-    messages: storyPrompt({ repo, digest, features, maxSteps }),
+    messages: storyPrompt({ repo, digest, structuralIndex, features, maxSteps }),
   });
 
-  onProgress?.("4/4 核对文件证据");
-  const merged = {
-    summary: featureDraft.summary,
-    tech: featureDraft.tech,
-    actions: (storyDraft.actions || []).map((action) => {
-      const feature = features.find((item) => item.id === action.id || item.verb === action.verb);
-      return {
-        ...action,
-        id: action.id || feature?.id,
-        verb: action.verb || feature?.verb,
-      };
-    }),
+  const validated = validateGeneratedStory(repo, storyDraft);
+  if (!validated.actions.length) throw new Error("没有生成可验证的 Story。请换一个功能或缩小目录后重试。");
+
+  return {
+    project: toRuntimeProject({ repo, featureDraft, validated }),
+    validated,
   };
-  const validated = validateGeneratedStory(repo, merged);
-  if (!validated.actions.length) throw new Error("没能把功能对上真实文件，换子目录或换模型再试。");
-  return { features, validated };
 }
