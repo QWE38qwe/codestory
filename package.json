@@ -1,24 +1,20 @@
 {
   "name": "codestory",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
+  "engines": { "node": ">=22.12.0" },
+  "workspaces": ["apps/web", "apps/server"],
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
-  },
-  "dependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "@xyflow/react": "^12.8.5",
-    "lucide-react": "^0.468.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "vite": "^6.0.5"
+    "dev": "concurrently -k \"npm:dev --workspace @codestory/server\" \"npm:dev --workspace @codestory/web\"",
+    "build": "npm run build --workspace @codestory/web && npm run build --workspace @codestory/server",
+    "start": "npm run start --workspace @codestory/server",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
-    "gh-pages": "^6.3.0"
+    "@playwright/test": "^1.51.0",
+    "concurrently": "^9.1.2",
+    "playwright": "^1.51.0"
   }
 }

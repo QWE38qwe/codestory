@@ -1,68 +1,56 @@
 # CodeStory
 
-CodeStory 把 Vibe Coding 项目翻译成**可播放、可追溯源码证据的功能实现 Story**。目标用户不是专业开发者，而是已经用 AI 做出项目、但想真正理解“这个功能到底是怎么被代码实现的”用户。
+CodeStory 将用户功能与可重新定位的源码证据组合成可播放 Story。Web Player 保留两个离线 Demo；GitHub 或本地项目通过 Fastify 后端异步分析。
 
-## v0.3 核心链路
+## 本地运行
 
-```text
-GitHub / Local Folder
-→ Repository Scan
-→ Structural Index
-→ Core Feature Discovery
-→ Select Feature
-→ Generate Story
-→ Evidence Validation
-→ Story Player
+需要 Node.js 22.12 或更高版本。启动时使用 Node 内置 SQLite 执行仓库中已提交的 migration，业务数据访问仍由 Prisma Client 完成。
+
+```powershell
+npm install
+Copy-Item .env.example .env
 ```
 
-与单纯的代码架构图不同，CodeStory 以“用户功能”为入口，例如“上传文件并解析”“生成 AI 总结”，每个 Story 控制在 4–8 个关键步骤，并提供小白 / 产品 / 工程师三档解释。
+在 `.env` 中设置独立的 32 字节 Base64 凭据主密钥。可以运行下面的命令生成一个值，再把输出粘贴到 `CODESTORY_CREDENTIAL_KEY`；不要提交 `.env`：
 
-### 证据等级
+```powershell
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
+```
 
-- **真实源码 / SOURCE**：文件真实存在，且系统根据 symbol 或行号重新定位并截取代码，不直接采用模型生成的 snippet。
-- **源码推断 / INFERRED**：模型识别到相关文件，但未能定位到可靠代码位置。
-- **模型解释 / MODEL**：缺少可验证源码证据，只作为理解辅助，不冒充源码事实。
+生成 Prisma Client。开发和生产启动命令会通过 `db:init` 自动执行尚未应用的 migration：
 
-## 使用
-
-```bash
-npm install
+```powershell
+npm run db:generate --workspace @codestory/server
 npm run dev
 ```
 
-默认地址：`http://127.0.0.1:5173/codestory/`
+开发页面默认在 `http://127.0.0.1:5173`，Fastify API 在 `http://127.0.0.1:3000`。生产模式使用 `npm run build` 后运行 `npm start`；Fastify 会同源托管 React 页面和 `/api`。
 
-打开后点击右上角 **解读仓库**：
+可选环境变量：`GITHUB_TOKEN` 供后端读取私有仓；`LLM_ALLOWED_ORIGINS` 可填写逗号分隔的精确 HTTPS origin 白名单。LLM API Key 在导入器输入后由后端连接测试并使用 AES-256-GCM 加密保存在 SQLite，页面、响应和日志不会回传明文。更换 `CODESTORY_CREDENTIAL_KEY` 后需重新设置 LLM Key。
 
-1. 粘贴 GitHub 仓库 URL，或选择本地文件夹。
-2. 私有仓可填写只读 GitHub Token。
-3. 配置 OpenRouter / OpenAI / Anthropic / 自定义 OpenAI 兼容模型。
-4. 点击 **扫描仓库**，先确认文件规模和扫描结果。
-5. 点击 **识别核心功能**，选择希望理解的功能。
-6. 点击 **生成 CodeStory**，进入功能实现播放器。
-7. 点击任一步骤查看输入、处理、输出、依赖、失败路径和代码证据。
+## 支持范围
 
-## 当前语言范围
+- GitHub `github.com` 仓库，以及受限的本地文件夹上传。
+- JavaScript、TypeScript、Python 源码；Markdown 和 JSON 可作为说明上下文。
+- 本地上传上限为 400 个文件、每个文件 200 KiB、总内容 25 MiB。上传源码写入每个 Job 的临时工作区，Job 终态后删除；启动时回收超过 24 小时的孤儿目录。
+- GitHub 大仓库或被截断的文件树需要指定更小的子目录。分析最多加载 90 个高相关文件。
+- 单用户、单进程、单个分析任务并发；不包含登录、多实例或公网部署。
 
-- JavaScript / TypeScript
-- Python
-- Markdown / JSON 会作为项目说明和配置上下文读取
+## 分析流程
 
-## 隐私与安全
+```text
+GitHub / 本地文件夹 -> 异步 Job -> 服务端扫描与结构索引
+-> 自动选择最多 3 个有真实文件证据的 Feature -> 生成并校验 Story -> Player
+```
 
-- 本地文件夹在浏览器本地读取。
-- API Key 和 GitHub Token 当前保存在本机 `localStorage`，不会进入 CodeStory 的 Prompt 文本。
-- 模型请求只发送本轮分析所需的代码上下文到用户配置的 Provider。
-- `.env`、构建目录、依赖目录和常见二进制文件默认忽略。
-- 开发代理只接受 POST，并拒绝 localhost / 常见私网地址作为转发目标。
+Story 中的 `SOURCE` 片段由服务端从实际文件重新定位并截取。每个保留的 Action 至少要包含一个源码证据，否则不保存 Story。仓库 README、注释和源代码始终视为不可信输入，不视为模型指令。
 
-> 当前版本适合本地个人使用。若未来部署成多人在线服务，需要把凭据存储进一步迁移到服务端安全凭据系统。
+## 验证
 
-## 当前实现策略
+```powershell
+npm run build
+npm test
+npm run test:e2e
+```
 
-v0.3 使用“轻量结构索引 + LLM 解释 + 程序证据校验”的方案，优先把产品闭环和可信度跑通。它还不是完整 AST / IDE 级 Call Graph，因此复杂动态调用、反射、运行时注入和大型 Monorepo 仍可能需要按子目录分析。
-
-## 预置 Demo
-
-- Clipboard History：真实 Swift 项目调用链演示
-- 小宇宙 AI 助手：预生成行为模型演示
+`npm run test:e2e` 验证离线 Demo Player 可用，不需要模型凭据或真实外网。普通启动使用可重复执行的 `db:init`。当前 Windows 验证机上的 Prisma schema engine 在 `migrate dev/deploy` 时会无详情失败，因此发布路径不依赖该引擎；新增数据库变更时应同时更新 `schema.prisma` 和 `prisma/migrations/<timestamp>_<name>/migration.sql`，并在空库及已迁移库上各执行一次 `npm run db:init --workspace @codestory/server`。`db:migrate`、`db:deploy` 仅保留给 Prisma engine 可正常运行的开发环境。

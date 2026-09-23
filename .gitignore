@@ -3,3 +3,10 @@ dist/
 .DS_Store
 *.log
 .vite/
+.env
+var/
+apps/server/dist/
+apps/web/dist/
+test-results/
+playwright-report/
+*.db
